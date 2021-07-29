@@ -1,3 +1,15 @@
+NOTE: is nFault (pin 8) different from FAULT (SPI: 0x1 D10)?
+NOTE: use Delay() vs time marking
+NOTE: how do we generate data for MOSI
+
+MCU: Master
+Gate Driver: Slave
+
+The code will be implemented into MCU (master)
+MCU outputs LOW to nSCS on Driver with 16 bits output to SDI to start communication 
+MCU outputs HIGH to nSCS to stop communication
+MCU receives register data from Driver via SDO on Driver
+
 Starting page 34
  
 SDI (input data) : 16 bit (5 command + 11 data)
@@ -42,3 +54,15 @@ ADDRESS
   - 0xA:1010 - Shunt Amplifier Control
   - 0xB:1011 - Voltage Regulator Control
   - 0xC:1100 - VDS Sense Control
+
+
+=============================================
+SPI.h 
+  - SPI.transfer16
+  - SPI.begin 
+  - SPI.end
+  - SPI.usingInterrupt
+  - SPI.beginTransaction
+  - SPI.endTransaction
+  - SPI.setBitOrder 
+  - SPI.setDataMode
