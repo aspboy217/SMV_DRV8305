@@ -1,0 +1,44 @@
+Starting page 34
+ 
+SDI (input data) : 16 bit (5 command + 11 data)
+SDO (output data): 11 bit register data (first 5 bit MSB - don't care)
+
+conditions:
+  - CPOL (clk polarity) = 0, CPHA (clk phase) = 1
+  - SCLK = LOW when nSCS transitions
+  - full 16 SCLK cycles
+  - data is propogated on the rising edge of SCLK
+  - data is captured on the falling edge of SCLK
+  - MSB: shifted in and out first
+  - nSCS = HIGH  ->  SCLK, SDI are ignored, SDO is high impedance
+  - nSCS should be HIGH at least for 500ns = 0.5us btw frames
+  - data to SDI < or > 16 bits -> frame error & data is ignored
+
+Programming format:
+          R/W|    ADDRESS    |                 DATA
+Word bit: B15 B14 B13 B12 B11 B10 B9  B8  B7  B6  B5  B4  B3  B2  B1  B0
+Command:  W0  A3  A2  A1  A0  D10 D9  D8  D7  D6  D5  D4  D3  D2  D1  D0
+  SDI
+    - MSB [15]: "W" : 1 read(1) or write(0) bit
+      - read:  response word is data in the register being written to
+      - write: response word is data in the register being read
+    - [14:11] : "A" : 4 address bits (0x1:0001 - 0xC:1100)
+    - [10:0]  : "D" : 11 data bits
+  SDO
+    - 11 data bits from registers accessed
+
+Register map on page 36.
+
+ADDRESS
+  - 0x1:0001 - Warnings
+  - 0x2:0010 - OV/VDS Faults
+  - 0x3:0011 - IC Faults
+  - 0x4:0100 - VGS Faults
+  - 0x5:0101 - HS Gate Drive Control
+  - 0x6:0110 - LS Gate Drive Control
+  - 0x7:0111 - Gate Drive Control
+  - 0x8:1000 - RSVD
+  - 0x9:1001 - IC Operation
+  - 0xA:1010 - Shunt Amplifier Control
+  - 0xB:1011 - Voltage Regulator Control
+  - 0xC:1100 - VDS Sense Control
