@@ -38,13 +38,13 @@ void loop() {
   if(digitalRead(nFAULT) == LOW) {
     Serial.println("nFault pin LOW!");
     if(checkFault())
-      checkFaultReg();
+      checkFaultReg(); // if 0x1 D10 is HI -> fault (no running - standby mode)
     else
-      checkWarningReg();
+      checkWarningReg(); // if 0x1 D10 is LOW -> warning (still running)
   }
 
-  if(!active)
-    handleFault();
+  if(!active) // if in standby mode
+    handleFault(); // motor should not be running 
 
   Serial.println();
   Serial.println();

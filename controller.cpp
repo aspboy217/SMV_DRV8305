@@ -38,6 +38,7 @@ uint16_t writeReg(uint8_t addr, uint16_t data){
  *                 CONTROL FUNCTIONS                    *
  ********************************************************/
 void startup() {
+  Serial.println("startup");
   delay(300);
   while(true) {
     if(digitalRead(nFAULT) == HIGH)
@@ -49,6 +50,7 @@ void startup() {
 
 /* Setting driving modes & alerts */
 void setMotor(){
+  Serial.println("setMotor");
   delay(300);
   // manually write modes
   // read all registers and store them into the status struct
@@ -106,10 +108,11 @@ void setMotor(){
 
 /* Check All registers and store the status into struct */
 void checkAll(){
-
+  Serial.println("checkAll");
 }
 
 bool operate() {
+  Serial.println("operate");
   if(checkFault())
     return false;
 
@@ -121,6 +124,7 @@ bool operate() {
 }
 
 void handleFault(){
+  Serial.println("handleFault");
   if(!checkFault()){
     if(operate()) // if fault is cleared
       return;
@@ -143,8 +147,10 @@ void handleFault(){
 /* return true if there is fault 
  * return false if there's no fault */
 bool checkFault(){
+  Serial.println("checkFault");
   uint16_t status = readReg(WARN);
   if(status & 0x400){
+    Serial.println("checkFault - Fault Flag!");
     active = false;
     return true;
   }
@@ -152,6 +158,7 @@ bool checkFault(){
 }
 
 void checkWarningReg(){
+  Serial.println("checkWarningReg");
   Serial.println("Checking 0x1");
   uint16_t status = readReg(WARN);
 
@@ -187,6 +194,7 @@ void checkWarningReg(){
 
 /* Check Fault addresses */
 void checkFaultReg(){
+  Serial.println("checkFaultReg");
   uint16_t status = 0;
 
   /* Check 0x2 - OV/VDS Faults */

@@ -5,7 +5,6 @@
 #define nSCS    10 
 #define nFAULT  7
 #define EN_GATE 8
-#define WAKE    6 // added
 #define THR_IN  A0
 #define THR_OUT 3
 
