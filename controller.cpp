@@ -1,120 +1,260 @@
 #include "controller.hpp"
 
+/********************************************************
+ *                    SPI FUNCTIONS                     *
+ ********************************************************/
 void SPI_init() {
   SPI.begin();
-  // set SCK, MOSI, SS to output mode
-  // set SCK, MOSI into LOW
-  // set SS into HIGH
-  // turn SPI on
   
-  digitalWrite(nSCS, HIGH); // to make sure
+  digitalWrite(nSCS, HIGH);
   SPI.setDataMode(SPIMODE);
-  // can choose Mode: 0 ~ 3
   SPI.setBitOrder(BITORDER);
-  // either MSBFIRST or LSBFIRST
-  SPI.setClockDivider(SPISPD); // to slow down Master sampling speed
-  // can choose divider: power of 2 up to 128 (2^7)
-  // 2: fastest, 128: slowest
+  SPI.setClockDivider(SPISPD);
 }
 
-void writeData(uint16_t val) {
-  digitalWrite(nSCS, LOW); // enable Slave Select
-  SPI.transfer16(val);
-  digitalWrite(nSCS, HIGH); // disable Slave Select
-}
+uint16_t readReg(uint8_t addr){
+  uint16_t value = (0x1 << 15) | (addr << 11);
 
-uint16_t readAndWriteData(uint16_t val) {
-  uint16_t data = 0;
-  digitalWrite(nSCS, LOW); // enable Slave Select
-  data = SPI.transfer16(val);
+  digitalWrite(nSCS, LOW);
+  value = SPI.transfer16(value);
   delayMicroseconds(MICRODELAY);
   digitalWrite(nSCS, HIGH); // disable Slave Select
-  return data;
+
+  return value;
 }
 
-bool SPI_comm(ID id, uint16_t data, bool RWbit) {
-  data = (data & (~(0x1f << 11))) | (RWbit << 15); // format data to transfer
+uint16_t writeReg(uint8_t addr, uint16_t data){
+  uint16_t value = (addr << 11) | data;
 
-  // this switch forms address of register into data
-  switch (id) {
-    // read only
-    case ID_WARN:
-      if (RWbit == WRITEBIT)
-        return false;
-      data = data | (ADDR_WARN << 11);
+  digitalWrite(nSCS, LOW);
+  value = SPI.transfer16(value);
+  delayMicroseconds(MICRODELAY);
+  digitalWrite(nSCS, HIGH); // disable Slave Select
+
+  return value;
+}
+
+/********************************************************
+ *                 CONTROL FUNCTIONS                    *
+ ********************************************************/
+void startup() {
+  delay(300);
+  while(true) {
+    if(digitalRead(nFAULT) == HIGH)
       break;
-    case ID_OV_VDS_F:
-      if (RWbit == WRITEBIT)
-        return false;
-      data = data | (ID_OV_VDS_F << 11);
-      break;
-    case ID_IC_F:
-      if (RWbit == WRITEBIT)
-        return false;
-      data = data | (ADDR_IC_F << 11);
-      break;
-    case ID_VGS_F:
-      if (RWbit == WRITEBIT)
-        return false;
-      data = data | (ADDR_VGS_F << 11);
-      break;
-    // read or write
-    case ID_HG_CTRL:
-      data = data | (ADDR_HG_CTRL << 11);
-      break;
-    case ID_LG_CTRL:
-      data = data | (ADDR_LG_CTRL << 11);
-      break;
-    case ID_G_CTRL:
-      data = data | (ADDR_G_CTRL << 11);
-      break;
-    case ID_IC_OP:
-      data = data | (ADDR_IC_OP << 11);
-      break;
-    case ID_SH_AMP_CTRL:
-      data = data | (ADDR_SH_AMP_CTRL << 11);
-      break;
-    case ID_VR_CTRL:
-      data = data | (ADDR_VR_CTRL << 11);
-      break;
-    case ID_VDS_CTRL:
-      data = data | (ADDR_VDS_CTRL << 11);
-      break;
-    default:
-      return false;
   }
-  // now data has 16 bit to trasfer to Slave
+  Serial.println("Standby Mode");
+  active = false;
+}
 
-  uint16_t data_read = 0;
-  switch (id) {
-    // read only
-    case ID_WARN:
-    case ID_OV_VDS_F:
-    case ID_IC_F:
-    case ID_VGS_F:
-      data_read = readAndWriteData(data);
+/* Setting driving modes & alerts */
+void setMotor(){
+  delay(300);
+  // manually write modes
+  // read all registers and store them into the status struct
+  uint16_t data = 0;
+
+  /* Set modes to 0x5 - HS Gate Drive Control */
+  data = CNTL_HS_DATA;
+  while(true){
+    if(writeReg(CNTL_HS, data) == data)
       break;
-    // read or write
-    case ID_HG_CTRL:
-    case ID_LG_CTRL:
-    case ID_G_CTRL:
-    case ID_IC_OP:
-    case ID_SH_AMP_CTRL:
-    case ID_VR_CTRL:
-    case ID_VDS_CTRL:
-      if (RWbit == READBIT)
-        data_read = readAndWriteData(data);
-      else {
-        writeData(data);
-        return true;
-      }
-      break;
-    default:
-      return false;
   }
-  // data_read has 16 bit from Slave
 
-  // add function to check if the communication is good
-  // add function to analyze received data
+  /* Set modes to 0x6 - LS Gate Drive Control */
+  data = CNTL_LS_DATA;
+  while(true){
+    if(writeReg(CNTL_LS, data) == data)
+      break;
+  }
+
+  /* Set modes to 0x7 - Gate Drive Control */
+  data = CNTL_DRV_DATA; 
+  while(true){
+    if(writeReg(CNTL_DRV, data) == data)
+      break;
+  }
+
+  /* Set modes to 0x9 - IC Operation */
+  data = CNTL_IC_DATA;
+  while(true){
+    if(writeReg(CNTL_IC, data) == data)
+      break;
+  }
+
+  /* Set modes to 0xA - Shunt Amplifier */
+  data = CNTL_SHAMP_DATA;
+  while(true){
+    if(writeReg(CNTL_SHAMP, data) == data)
+      break;
+  }
+
+  /* Set modes to 0xB - Voltage Regulator */
+  data = CNTL_VREG_DATA;
+  while(true){
+    if(writeReg(CNTL_VREG, data) == data)
+      break;
+  }
+
+  /* Set modes to 0xC - VDS Sense Control */
+  data = CNTL_VDS_DATA;
+  while(true){
+    if(writeReg(CNTL_VDS, data) == data)
+      break;
+  }
+}
+
+/* Check All registers and store the status into struct */
+void checkAll(){
+
+}
+
+bool operate() {
+  if(checkFault())
+    return false;
+
+  if(!active)
+    active = true;
+  digitalWrite(EN_GATE, HIGH);
+  Serial.print("Operation Mode");
   return true;
+}
+
+void handleFault(){
+  if(!checkFault()){
+    if(operate()) // if fault is cleared
+      return;
+  }
+
+  Serial.println("Get into while loop until fault resolved");  
+  while(true){
+    if(!checkFault())
+      break;
+  }
+  if(operate())
+    return;
+  // handle cases
+  // call operate if everything is cleared
+}
+
+/********************************************************
+ *              REG CHECKIGN FUNCTIONS                  *
+ ********************************************************/
+/* return true if there is fault 
+ * return false if there's no fault */
+bool checkFault(){
+  uint16_t status = readReg(WARN);
+  if(status & 0x400){
+    active = false;
+    return true;
+  }
+  return false;
+}
+
+void checkWarningReg(){
+  Serial.println("Checking 0x1");
+  uint16_t status = readReg(WARN);
+
+  if(status != 0){
+    /* Temperature Monitor */
+    if(status & 0x008) 
+      Serial.println("D3: Temp > 105C");
+    if(status & 0x004)
+      Serial.println("D2: Temp > 125C");
+    if(status & 0x002)
+      Serial.println("D1: Temp > 135C");
+    if(status & 0x100)
+      Serial.println("D8: Temp > 175C");
+    if(status & 0x001)
+      Serial.println("D0: Overtemperature warning");
+    
+    /* Voltage Monitor */
+    if(status & 0x080)
+      Serial.println("D7: PVDD undervoltage warning");
+    if(status & 0x040)
+      Serial.println("D6: PVDD overvoltage warning");
+    if(status & 0x020)
+      Serial.println("D5: VDS overcurrent warning");
+    if(status & 0x010)
+      Serial.println("D4: Charge pump undervoltage warning");
+
+    /* Check for faults */
+    if(status & 0x400)
+      Serial.println("D10: Fault Indication");
+  }
+  Serial.println("Done 0x1");
+}
+
+/* Check Fault addresses */
+void checkFaultReg(){
+  uint16_t status = 0;
+
+  /* Check 0x2 - OV/VDS Faults */
+  Serial.println("Checking 0x2 - Overcurrent Faults");
+  status = readReg(FLT_OC);
+  if(status != 0){
+    if(status & 0x001)
+      Serial.println("D0: Sense A overcurrent fault");
+    if(status & 0x002)
+      Serial.println("D1: Sense B overcurrent fault");
+    if(status & 0x004)
+      Serial.println("D2: Sense C overcurrent fault");
+    if(status & 0x400)
+      Serial.println("D10: VDS overcurrent fault for HS A");
+    if(status & 0x200)
+      Serial.println("D9: VDS overcurrent fault for LS A");
+    if(status & 0x100)
+      Serial.println("D8: VDS overcurrent fault for HS B");
+    if(status & 0x080)
+      Serial.println("D7: VDS overcurrent fault for LS B");
+    if(status & 0x040)
+      Serial.println("D6: VDS overcurrent fault for HS C");
+    if(status & 0x020)
+      Serial.println("D5: VDS overcurrent fault for LS C");
+  }
+  Serial.println("Done 0x2");
+
+  /* Check 0x3 - IC Faults */
+  Serial.println("Checking 0x3 - IC Faults");
+  status = readReg(FLT_IC);
+  if(status != 0){
+    if(status & 0x400)
+      Serial.println("D10: PVDD undervoltage 2 fault");
+    if(status & 0x200)
+      Serial.println("D9: Watchdog fault");
+    if(status & 0x100)
+      Serial.println("D8: Overtemperature fault");
+    if(status & 0x040)
+      Serial.println("D6: VREG undervoltage fault");
+    if(status & 0x020)
+      Serial.println("D5: AVDD undervoltage fault");
+    if(status & 0x010)
+      Serial.println("D4: LS Gate supply fault");
+    if(status & 0x004)
+      Serial.println("D2: HS charge pump undervoltage 2 fault");
+    if(status & 0x002)
+      Serial.println("D1: HS charge pump overvoltage fault");
+    if(status & 0x001)
+      Serial.println("D0: HS charge pump overvoltage ABS fault");
+  }
+  Serial.println("Done 0x3");
+    
+  /* Check 0x4 - Gate VGS Faults*/
+  Serial.println("Checking 0x4 - Gate VGS Faults");
+  status = readReg(FLT_VGS);
+  if(status != 0){
+    if(status & 0x400)
+      Serial.println("D10: VGS gate drive fault HS A");
+    if(status & 0x200)
+      Serial.println("D9: VGS gate drive fault LS A");
+    if(status & 0x100)
+      Serial.println("D8: VGS gate drive fault HS B");
+    if(status & 0x080)
+      Serial.println("D7: VGS gate drive fault LS B");
+    if(status & 0x040)
+      Serial.println("D6: VGS gate drive fault HS C");
+    if(status & 0x020)
+      Serial.println("D5: VGS gate drive fault LS C");
+  }
+  Serial.println("Done 0x3");
 }
