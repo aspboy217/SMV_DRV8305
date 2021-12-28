@@ -1,10 +1,17 @@
+#include "global.hpp"
 #include "controller.hpp"
+#include "ramping.hpp"
+
+void pinInit();
+void pwmFrequencyAdjuster();
+void checkFaultPin();
 
 int thr_in = 0;
 int thr_out = 0;
 
-void pinInit();
-void pwmFrequencyAdjuster();
+WarningReg warnReg;
+FaultReg fltReg;
+PD pd_controller;
 
 void setup() {
   Serial.begin(9600);
@@ -17,9 +24,13 @@ void setup() {
 
   // set driving mode & alerts
   setMotor();
-
-  // check all registers and store the results into struct
-  // checkAll();
+  
+  Serial.println("Initial Warning & Fault Check");
+  warnReg.checkWarningReg();
+  warnReg.printWarningReg();
+  fltReg.checkFaultReg();
+  fltReg.printFaultReg();
+  Serial.println("Initial Check Done");
   
   // get into operation mode
   if(!operate())
@@ -27,25 +38,18 @@ void setup() {
 }
 
 void loop() {
-  /* throttle read & write */
-  input = analogRead(THR_IN);
-  // direct mapping
-  output = input / 4;
+  output = direct(analogRead(THR_IN));
   analogWrite(THR_OUT, output);
   Serial.print("Speed: ");
   Serial.println((int)((double)output / 255. * 100.));
 
-  if(digitalRead(nFAULT) == LOW) {
-    Serial.println("nFault pin LOW!");
-    if(checkFault())
-      checkFaultReg(); // if 0x1 D10 is HI -> fault (no running - standby mode)
-    else
-      checkWarningReg(); // if 0x1 D10 is LOW -> warning (still running)
+  checkFaultPin();
+
+  if(!active) {
+    // if in standby mode
+    handleFault(); // motor shouldn't be running 
+    fltReg.clearFault();
   }
-
-  if(!active) // if in standby mode
-    handleFault(); // motor should not be running 
-
   Serial.println();
   Serial.println();
 }
@@ -82,4 +86,18 @@ void pwmFrequencyAdjuster() {
   TCCR1B |= prescalerVal2;
   TCCR2B |= prescalerVal2;
   // More information at http://usethearduino.blogspot.com/2008/11/changing-pwm-frequency-on-arduino.html
+}
+
+void checkFaultPin(){
+  if(digitalRead(nFAULT) == LOW) {
+    Serial.println("nFault pin LOW!");
+    if(checkFault()){// if 0x1 D10 is HI -> fault (no running - standby mode)
+      fltReg.checkFaultReg();
+      fltReg.printFaultReg();
+    }
+    else{// if 0x1 D10 is LOW -> warning (still running)
+      warnReg.checkWarningReg(); 
+      warnReg.printWarningReg();
+    }
+  }
 }

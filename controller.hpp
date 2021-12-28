@@ -1,7 +1,6 @@
-#ifndef SPI_COMM_H
-#define SPI_COMM_H
+#ifndef CONTROLLER_HPP
+#define CONTROLLER_HPP
 #include <SPI.h>
-#include "GLOBAL.hpp"
 
 /* SPI SETTING CONSTS */
 #define SPISPD            SPI_CLOCK_DIV4  // Set SPI Clock Speed
@@ -9,21 +8,6 @@
 #define SPIMODE           SPI_MODE1       // Set SPI Mode
 #define MICRODELAY        20              // Set delay amount to receive data from Slave (microsec)
 #define TRANSFERDEALAY    1000            // Set delay amount to transfer data (millisec)- > 500ns
-
-/* SPI ADDR */
-// STATUS REGS (R ONLY)
-#define WARN       0x1 // Warning
-#define FLT_OC     0x2 // Overcurrent faults
-#define FLT_IC     0x3 // IC Faults
-#define FLT_VGS    0x4 // Gate Driver VGS Faults
-// CONTROL REGS (R & W)
-#define CNTL_HS    0x5 // HS Gate Drv Control
-#define CNTL_LS    0x6 // LS Gate Drv Control
-#define CNTL_DRV   0x7 // Gate Drv Control - modes
-#define CNTL_IC    0x9 // IC Operation - Fault & Watchdog control
-#define CNTL_SHAMP 0xA // Shunt Amp Control
-#define CNTL_VREG  0xB // Voltage Regulator Control
-#define CNTL_VDS   0xC // VDS Sense Control
 
 /* SPI COMM FUNCTIONS */
 void SPI_init();
@@ -36,15 +20,31 @@ void setMotor();
 void checkAll();
 bool operate();
 void handleFault();
+bool checkFault(); /* Check Fault bit only (0x1 D10) */
+// void sleep();
 
-/* REGISTER CHECKING FUNCTIONS */
-/* Check Fault bit only (0x1 D10) */
-bool checkFault();
+class WarningReg {
+public:
+  WarningReg();
+  void checkWarningReg();
+  void printWarningReg();
+private:
+  void resetReg();
+  bool FAULT, TEMP_FLAG4, TEMP_FLAG3, TEMP_FLAG2, TEMP_FLAG1,
+      PVDD_UVFL, PVDD_OVFL, VDS_STATUS, VCHP_UVFL, OTW;
+};
 
-/* Check Register 0x1 & return true if there is fault */
-void checkWarningReg();
-
-/* Check Register 0x2, 0x3, 0x4 */
-void checkFaultReg();
+class FaultReg {
+public:
+  FaultReg();
+  void checkFaultReg();
+  void printFaultReg();
+  void clearFault();
+private:
+  void resetReg();
+  bool VDS_HA, VDS_LA, VDS_HB, VDS_LB, VDS_HC, VDS_LC, SNS_A_OCP, SNS_B_OCP, SNS_C_OCP;
+  bool PVDD_UVLO2, WD_FAULT, OTSD, VREG_UV, AVDD_UVLO, VCP_LSD_UVLO2, VCHP_UVLO2, VCHP_OVLO, VCHP_OVLO_ABS;
+  bool VGS_HA, VGS_LA, VGS_HB, VGS_LB, VGS_HC, VGS_LC;
+};
 
 #endif

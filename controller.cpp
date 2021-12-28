@@ -1,4 +1,5 @@
 #include "controller.hpp"
+#include "global.hpp"
 
 /********************************************************
  *                    SPI FUNCTIONS                     *
@@ -52,8 +53,6 @@ void startup() {
 void setMotor(){
   Serial.println("setMotor");
   delay(300);
-  // manually write modes
-  // read all registers and store them into the status struct
   uint16_t data = 0;
 
   /* Set modes to 0x5 - HS Gate Drive Control */
@@ -141,9 +140,6 @@ void handleFault(){
   // call operate if everything is cleared
 }
 
-/********************************************************
- *              REG CHECKIGN FUNCTIONS                  *
- ********************************************************/
 /* return true if there is fault 
  * return false if there's no fault */
 bool checkFault(){
@@ -157,112 +153,216 @@ bool checkFault(){
   return false;
 }
 
-void checkWarningReg(){
-  Serial.println("checkWarningReg");
-  Serial.println("Checking 0x1");
-  uint16_t status = readReg(WARN);
-
-  if(status != 0){
-    /* Temperature Monitor */
-    if(status & 0x008) 
-      Serial.println("D3: Temp > 105C");
-    if(status & 0x004)
-      Serial.println("D2: Temp > 125C");
-    if(status & 0x002)
-      Serial.println("D1: Temp > 135C");
-    if(status & 0x100)
-      Serial.println("D8: Temp > 175C");
-    if(status & 0x001)
-      Serial.println("D0: Overtemperature warning");
-    
-    /* Voltage Monitor */
-    if(status & 0x080)
-      Serial.println("D7: PVDD undervoltage warning");
-    if(status & 0x040)
-      Serial.println("D6: PVDD overvoltage warning");
-    if(status & 0x020)
-      Serial.println("D5: VDS overcurrent warning");
-    if(status & 0x010)
-      Serial.println("D4: Charge pump undervoltage warning");
-
-    /* Check for faults */
-    if(status & 0x400)
-      Serial.println("D10: Fault Indication");
-  }
-  Serial.println("Done 0x1");
+/********************************************************
+ *                 WarningReg METHODS                   *
+ ********************************************************/
+WarningReg::WarningReg(){
+  resetReg();
 }
 
-/* Check Fault addresses */
-void checkFaultReg(){
-  Serial.println("checkFaultReg");
-  uint16_t status = 0;
+void WarningReg::checkWarningReg(){
+  resetReg();
+  uint16_t status = readReg(WARN);
+  if(status != 0){
+    if(status & 0x400)
+      FAULT = true;
+    if(status & 0x100)
+      TEMP_FLAG4 = true;
+    if(status & 0x080)
+      PVDD_UVFL = true;
+    if(status & 0x040)
+      PVDD_OVFL = true;
+    if(status & 0x020)
+      VDS_STATUS = true;
+    if(status & 0x010)
+      VCHP_UVFL = true;
+    if(status & 0x008)
+      TEMP_FLAG1 = true;
+    if(status & 0x004)
+      TEMP_FLAG2 = true;
+    if(status & 0x002)
+      TEMP_FLAG3 = true;
+    if(status & 0x001)
+      OTW = true;
+  }
+}
 
-  /* Check 0x2 - OV/VDS Faults */
-  Serial.println("Checking 0x2 - Overcurrent Faults");
+void WarningReg::printWarningReg(){
+  Serial.println("Printing Warning Registers");
+  if(FAULT)
+    Serial.println("D10: Fault Indication");
+  if(TEMP_FLAG4)
+    Serial.println("D8: Temp > 175C");
+  if(PVDD_UVFL)
+    Serial.println("D7: PVDD undervoltage warning");
+  if(PVDD_OVFL)
+    Serial.println("D6: PVDD overvoltage warning");
+  if(VDS_STATUS)
+    Serial.println("D5: VDS overcurrent warning");
+  if(VCHP_UVFL)
+    Serial.println("D4: Charge pump undervoltage warning");
+  if(TEMP_FLAG1)
+    Serial.println("D3: Temp > 105C");
+  if(TEMP_FLAG2)
+    Serial.println("D2: Temp > 125C");
+  if(TEMP_FLAG3)
+    Serial.println("D1: Temp > 135C");
+  if(OTW)
+    Serial.println("D0: Overtemperature warning");
+  Serial.println("Done");
+}
+
+void WarningReg::resetReg(){
+  FAULT = false; PVDD_UVFL = false; PVDD_OVFL = false;
+  TEMP_FLAG4 = false; TEMP_FLAG3 = false; TEMP_FLAG2 = false; TEMP_FLAG1 = false; 
+  VDS_STATUS = false; VCHP_UVFL = false; OTW = false;
+}
+
+/********************************************************
+ *                   FaultReg METHODS                   *
+ ********************************************************/
+FaultReg::FaultReg(){
+  resetReg();
+}
+
+void FaultReg::checkFaultReg(){
+  resetReg();
+
+  uint16_t status = 0;
   status = readReg(FLT_OC);
   if(status != 0){
     if(status & 0x001)
-      Serial.println("D0: Sense A overcurrent fault");
+      SNS_A_OCP = true;
     if(status & 0x002)
-      Serial.println("D1: Sense B overcurrent fault");
+      SNS_B_OCP = true;
     if(status & 0x004)
-      Serial.println("D2: Sense C overcurrent fault");
+      SNS_C_OCP = true;
     if(status & 0x400)
-      Serial.println("D10: VDS overcurrent fault for HS A");
+      VDS_HA = true;
     if(status & 0x200)
-      Serial.println("D9: VDS overcurrent fault for LS A");
+      VDS_LA = true;
     if(status & 0x100)
-      Serial.println("D8: VDS overcurrent fault for HS B");
+      VDS_HB = true;
     if(status & 0x080)
-      Serial.println("D7: VDS overcurrent fault for LS B");
+      VDS_LB = true;
     if(status & 0x040)
-      Serial.println("D6: VDS overcurrent fault for HS C");
+      VDS_HC = true;
     if(status & 0x020)
-      Serial.println("D5: VDS overcurrent fault for LS C");
+      VDS_LC = true;
   }
-  Serial.println("Done 0x2");
 
-  /* Check 0x3 - IC Faults */
-  Serial.println("Checking 0x3 - IC Faults");
   status = readReg(FLT_IC);
   if(status != 0){
     if(status & 0x400)
-      Serial.println("D10: PVDD undervoltage 2 fault");
+      PVDD_UVLO2 = true;
     if(status & 0x200)
-      Serial.println("D9: Watchdog fault");
+      WD_FAULT = true;
     if(status & 0x100)
-      Serial.println("D8: Overtemperature fault");
+      OTSD = true;
     if(status & 0x040)
-      Serial.println("D6: VREG undervoltage fault");
+      VREG_UV = true;
     if(status & 0x020)
-      Serial.println("D5: AVDD undervoltage fault");
+      AVDD_UVLO = true;
     if(status & 0x010)
-      Serial.println("D4: LS Gate supply fault");
+      VCP_LSD_UVLO2 = true;
     if(status & 0x004)
-      Serial.println("D2: HS charge pump undervoltage 2 fault");
+      VCHP_UVLO2 = true;
     if(status & 0x002)
-      Serial.println("D1: HS charge pump overvoltage fault");
+      VCHP_OVLO = true;
     if(status & 0x001)
-      Serial.println("D0: HS charge pump overvoltage ABS fault");
+      VCHP_OVLO_ABS = true;
   }
-  Serial.println("Done 0x3");
     
-  /* Check 0x4 - Gate VGS Faults*/
-  Serial.println("Checking 0x4 - Gate VGS Faults");
   status = readReg(FLT_VGS);
   if(status != 0){
     if(status & 0x400)
-      Serial.println("D10: VGS gate drive fault HS A");
+      VGS_HA = true;
     if(status & 0x200)
-      Serial.println("D9: VGS gate drive fault LS A");
+      VGS_LA = true;
     if(status & 0x100)
-      Serial.println("D8: VGS gate drive fault HS B");
+      VGS_HB = true;
     if(status & 0x080)
-      Serial.println("D7: VGS gate drive fault LS B");
+      VGS_LB = true;
     if(status & 0x040)
-      Serial.println("D6: VGS gate drive fault HS C");
+      VGS_HC = true;
     if(status & 0x020)
-      Serial.println("D5: VGS gate drive fault LS C");
+      VGS_LC = true;
   }
+}
+
+void FaultReg::printFaultReg(){
+  Serial.println("Printing Fault Registers");
+
+  Serial.println("Checking 0x2 - Overcurrent Faults");
+  if(SNS_A_OCP)
+    Serial.println("D0: Sense A overcurrent fault");
+  if(SNS_B_OCP)
+    Serial.println("D1: Sense B overcurrent fault");
+  if(SNS_C_OCP)
+    Serial.println("D2: Sense C overcurrent fault");
+  if(VDS_HA)
+    Serial.println("D10: VDS overcurrent fault for HS A");
+  if(VDS_LA)
+    Serial.println("D9: VDS overcurrent fault for LS A");
+  if(VDS_HB)
+    Serial.println("D8: VDS overcurrent fault for HS B");
+  if(VDS_LB)
+    Serial.println("D7: VDS overcurrent fault for LS B");
+  if(VDS_HC)
+    Serial.println("D6: VDS overcurrent fault for HS C");
+  if(VDS_LC)
+    Serial.println("D5: VDS overcurrent fault for LS C");
+  Serial.println("Done 0x2");
+
+  Serial.println("Checking 0x3 - IC Faults");
+  if(PVDD_UVLO2)
+    Serial.println("D10: PVDD undervoltage 2 fault");
+  if(WD_FAULT)
+    Serial.println("D9: Watchdog fault");
+  if(OTSD)
+    Serial.println("D8: Overtemperature fault");
+  if(VREG_UV)
+    Serial.println("D6: VREG undervoltage fault");
+  if(AVDD_UVLO)
+    Serial.println("D5: AVDD undervoltage fault");
+  if(VCP_LSD_UVLO2)
+    Serial.println("D4: LS Gate supply fault");
+  if(VCHP_UVLO2)
+    Serial.println("D2: HS charge pump undervoltage 2 fault");
+  if(VCHP_OVLO)
+    Serial.println("D1: HS charge pump overvoltage fault");
+  if(VCHP_OVLO_ABS)
+    Serial.println("D0: HS charge pump overvoltage ABS fault");
   Serial.println("Done 0x3");
+    
+  Serial.println("Checking 0x4 - Gate VGS Faults");
+  if(VGS_HA)
+    Serial.println("D10: VGS gate drive fault HS A");
+  if(VGS_LA)
+    Serial.println("D9: VGS gate drive fault LS A");
+  if(VGS_HB)
+    Serial.println("D8: VGS gate drive fault HS B");
+  if(VGS_LB)
+    Serial.println("D7: VGS gate drive fault LS B");
+  if(VGS_HC)
+    Serial.println("D6: VGS gate drive fault HS C");
+  if(VGS_LC)
+    Serial.println("D5: VGS gate drive fault LS C");
+  Serial.println("Done 0x3");
+}
+
+void FaultReg::clearFault(){
+  uint16_t data = CNTL_IC_DATA | CLR_FLTS;
+  while(true){
+    if(writeReg(CNTL_IC, data) == data)
+      break;
+  }
+}
+
+void FaultReg::resetReg(){
+  VDS_HA = false; VDS_LA= false; VDS_HB= false; VDS_LB = false; VDS_HC = false; VDS_LC = false;
+  SNS_A_OCP = false; SNS_B_OCP = false; SNS_C_OCP = false;
+  PVDD_UVLO2 = false; WD_FAULT = false; OTSD = false; VREG_UV = false; AVDD_UVLO = false;
+  VCP_LSD_UVLO2 = false; VCHP_UVLO2 = false; VCHP_OVLO = false; VCHP_OVLO_ABS = false;
+  VGS_HA = false; VGS_LA = false; VGS_HB = false; VGS_LB = false; VGS_HC = false; VGS_LC = false;
 }
