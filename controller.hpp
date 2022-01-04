@@ -14,14 +14,7 @@ void SPI_init();
 uint16_t readReg(uint8_t addr);
 uint16_t writeReg(uint8_t addr, uint16_t data);
 
-/* CONTROLLER FUNCTIONS */
-void startup();
-void setMotor();
-void checkAll();
-bool operate();
-void handleFault();
-bool checkFault(); /* Check Fault bit only (0x1 D10) */
-// void sleep();
+
 
 class WarningReg {
 public:
@@ -45,6 +38,24 @@ private:
   bool VDS_HA, VDS_LA, VDS_HB, VDS_LB, VDS_HC, VDS_LC, SNS_A_OCP, SNS_B_OCP, SNS_C_OCP;
   bool PVDD_UVLO2, WD_FAULT, OTSD, VREG_UV, AVDD_UVLO, VCP_LSD_UVLO2, VCHP_UVLO2, VCHP_OVLO, VCHP_OVLO_ABS;
   bool VGS_HA, VGS_LA, VGS_HB, VGS_LB, VGS_HC, VGS_LC;
+};
+
+class Controller {
+public:
+  Controller();
+  void startup();
+  void handleFault();
+  void checkFaultPin();
+  bool isActive();
+private:
+  void standby();
+  bool operate();
+  bool checkFault(); /* Check Fault bit only (0x1 D10) */
+  void setMotor();
+
+  WarningReg WarnReg;
+  FaultReg FltReg;
+  bool active;
 };
 
 #endif

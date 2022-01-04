@@ -1,56 +1,52 @@
 #include "global.hpp"
 #include "controller.hpp"
-#include "ramping.hpp"
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
 
 void pinInit();
 void pwmFrequencyAdjuster();
-void checkFaultPin();
+void displayInit();
+void displayOLED(int top, bool status);
 
 int thr_in = 0;
 int thr_out = 0;
-
-WarningReg warnReg;
-FaultReg fltReg;
-PD pd_controller;
+int output;
+int pwm;
+bool status;
+Controller controller;
+Adafruit_SSD1306 display = Adafruit_SSD1306(128, 64, &Wire, -1);
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
   Serial.println("start");
 
-  init();
+  pinInit();
+  displayInit();
 
-  // wait for DRV to be in standby mode
-  startup();
+  controller.startup();
 
-  // set driving mode & alerts
-  setMotor();
-  
-  Serial.println("Initial Warning & Fault Check");
-  warnReg.checkWarningReg();
-  warnReg.printWarningReg();
-  fltReg.checkFaultReg();
-  fltReg.printFaultReg();
-  Serial.println("Initial Check Done");
-  
-  // get into operation mode
-  if(!operate())
-    handleFault();
+  output = 0;
+  pwm = 0;
+  status = false;
 }
 
 void loop() {
-  output = direct(analogRead(THR_IN));
+  output = analogRead(THR_IN) / 4;
   analogWrite(THR_OUT, output);
-  Serial.print("Speed: ");
-  Serial.println((int)((double)output / 255. * 100.));
+  pwm = (int)((double)output / 255. * 100.);
+  
+  controller.checkFaultPin();
 
-  checkFaultPin();
-
-  if(!active) {
-    // if in standby mode
-    handleFault(); // motor shouldn't be running 
-    fltReg.clearFault();
+  status = controller.isActive();
+  displayOLED(pwm, status);
+  if(!status) {
+    if(analogRead(SW) < 300){ // need to change this pin to interrupt
+      if(!controller.operate())
+        controller.handleFault();
+    }
+    else
+      controller.handleFault();
   }
-  Serial.println();
   Serial.println();
 }
 
@@ -58,10 +54,21 @@ void loop() {
  *                 FUNCTIONS DEFINITIONS                *
  ********************************************************/
 void pinInit(){
-  pinMode(nFAULT, INPUT);
-  pinMode(EN_GATE, OUTPUT);
-  pinMode(THR_IN, INPUT);
+  pinMode(THR_IN , INPUT);
+  pinMode(SO1    , INPUT);
+  pinMode(SO2    , INPUT);
+  pinMode(SO3    , INPUT);
+  pinMode(SW     , INPUT); // Switch
+  pinMode(CURR_A , INPUT);
+
+  pinMode(OPERATE, OUTPUT); // blue LED
+  pinMode(STANDBY, OUTPUT); // green LED
+  pinMode(STARTUP, OUTPUT); // red LED
+  pinMode(WAKE   , OUTPUT);
+  pinMode(PWRGD  , INPUT);
   pinMode(THR_OUT, OUTPUT);
+  pinMode(nFAULT , INPUT);
+  pinMode(EN_GATE, OUTPUT);
 
   SPI_init();
   pwmFrequencyAdjuster();
@@ -88,16 +95,27 @@ void pwmFrequencyAdjuster() {
   // More information at http://usethearduino.blogspot.com/2008/11/changing-pwm-frequency-on-arduino.html
 }
 
-void checkFaultPin(){
-  if(digitalRead(nFAULT) == LOW) {
-    Serial.println("nFault pin LOW!");
-    if(checkFault()){// if 0x1 D10 is HI -> fault (no running - standby mode)
-      fltReg.checkFaultReg();
-      fltReg.printFaultReg();
-    }
-    else{// if 0x1 D10 is LOW -> warning (still running)
-      warnReg.checkWarningReg(); 
-      warnReg.printWarningReg();
-    }
-  }
+void displayInit() {
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setRotation(2);
+}
+
+void displayOLED(int top, bool status) {
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.print("Duty %: ");
+  display.setCursor(40, 0);
+  display.print(top);
+
+  display.setCursor(0, 15);
+  display.print("Status: ");
+  display.setCursor(40, 15);
+  if(status)
+    display.print("operation");
+  else
+    display.print("standby");
+  
+  display.display();
 }

@@ -15,7 +15,7 @@ void SPI_init() {
 
 uint16_t readReg(uint8_t addr){
   uint16_t value = (0x1 << 15) | (addr << 11);
-
+  
   digitalWrite(nSCS, LOW);
   value = SPI.transfer16(value);
   delayMicroseconds(MICRODELAY);
@@ -33,124 +33,6 @@ uint16_t writeReg(uint8_t addr, uint16_t data){
   digitalWrite(nSCS, HIGH); // disable Slave Select
 
   return value;
-}
-
-/********************************************************
- *                 CONTROL FUNCTIONS                    *
- ********************************************************/
-void startup() {
-  Serial.println("startup");
-  delay(300);
-  while(true) {
-    if(digitalRead(nFAULT) == HIGH)
-      break;
-  }
-  Serial.println("Standby Mode");
-  active = false;
-}
-
-/* Setting driving modes & alerts */
-void setMotor(){
-  Serial.println("setMotor");
-  delay(300);
-  uint16_t data = 0;
-
-  /* Set modes to 0x5 - HS Gate Drive Control */
-  data = CNTL_HS_DATA;
-  while(true){
-    if(writeReg(CNTL_HS, data) == data)
-      break;
-  }
-
-  /* Set modes to 0x6 - LS Gate Drive Control */
-  data = CNTL_LS_DATA;
-  while(true){
-    if(writeReg(CNTL_LS, data) == data)
-      break;
-  }
-
-  /* Set modes to 0x7 - Gate Drive Control */
-  data = CNTL_DRV_DATA; 
-  while(true){
-    if(writeReg(CNTL_DRV, data) == data)
-      break;
-  }
-
-  /* Set modes to 0x9 - IC Operation */
-  data = CNTL_IC_DATA;
-  while(true){
-    if(writeReg(CNTL_IC, data) == data)
-      break;
-  }
-
-  /* Set modes to 0xA - Shunt Amplifier */
-  data = CNTL_SHAMP_DATA;
-  while(true){
-    if(writeReg(CNTL_SHAMP, data) == data)
-      break;
-  }
-
-  /* Set modes to 0xB - Voltage Regulator */
-  data = CNTL_VREG_DATA;
-  while(true){
-    if(writeReg(CNTL_VREG, data) == data)
-      break;
-  }
-
-  /* Set modes to 0xC - VDS Sense Control */
-  data = CNTL_VDS_DATA;
-  while(true){
-    if(writeReg(CNTL_VDS, data) == data)
-      break;
-  }
-}
-
-/* Check All registers and store the status into struct */
-void checkAll(){
-  Serial.println("checkAll");
-}
-
-bool operate() {
-  Serial.println("operate");
-  if(checkFault())
-    return false;
-
-  if(!active)
-    active = true;
-  digitalWrite(EN_GATE, HIGH);
-  Serial.print("Operation Mode");
-  return true;
-}
-
-void handleFault(){
-  Serial.println("handleFault");
-  if(!checkFault()){
-    if(operate()) // if fault is cleared
-      return;
-  }
-
-  Serial.println("Get into while loop until fault resolved");  
-  while(true){
-    if(!checkFault())
-      break;
-  }
-  if(operate())
-    return;
-  // handle cases
-  // call operate if everything is cleared
-}
-
-/* return true if there is fault 
- * return false if there's no fault */
-bool checkFault(){
-  Serial.println("checkFault");
-  uint16_t status = readReg(WARN);
-  if(status & 0x400){
-    Serial.println("checkFault - Fault Flag!");
-    active = false;
-    return true;
-  }
-  return false;
 }
 
 /********************************************************
@@ -209,7 +91,6 @@ void WarningReg::printWarningReg(){
     Serial.println("D1: Temp > 135C");
   if(OTW)
     Serial.println("D0: Overtemperature warning");
-  Serial.println("Done");
 }
 
 void WarningReg::resetReg(){
@@ -312,7 +193,6 @@ void FaultReg::printFaultReg(){
     Serial.println("D6: VDS overcurrent fault for HS C");
   if(VDS_LC)
     Serial.println("D5: VDS overcurrent fault for LS C");
-  Serial.println("Done 0x2");
 
   Serial.println("Checking 0x3 - IC Faults");
   if(PVDD_UVLO2)
@@ -333,7 +213,6 @@ void FaultReg::printFaultReg(){
     Serial.println("D1: HS charge pump overvoltage fault");
   if(VCHP_OVLO_ABS)
     Serial.println("D0: HS charge pump overvoltage ABS fault");
-  Serial.println("Done 0x3");
     
   Serial.println("Checking 0x4 - Gate VGS Faults");
   if(VGS_HA)
@@ -348,7 +227,6 @@ void FaultReg::printFaultReg(){
     Serial.println("D6: VGS gate drive fault HS C");
   if(VGS_LC)
     Serial.println("D5: VGS gate drive fault LS C");
-  Serial.println("Done 0x3");
 }
 
 void FaultReg::clearFault(){
@@ -365,4 +243,149 @@ void FaultReg::resetReg(){
   PVDD_UVLO2 = false; WD_FAULT = false; OTSD = false; VREG_UV = false; AVDD_UVLO = false;
   VCP_LSD_UVLO2 = false; VCHP_UVLO2 = false; VCHP_OVLO = false; VCHP_OVLO_ABS = false;
   VGS_HA = false; VGS_LA = false; VGS_HB = false; VGS_LB = false; VGS_HC = false; VGS_LC = false;
+}
+
+/********************************************************
+ *                 CONTROLLER FUNCTIONS                 *
+ ********************************************************/
+Controller::Controller() : active(false) {}
+
+bool Controller::isActive() {
+  return active;
+}
+
+// OPERATION RELATED ************************************
+void Controller::startup() {
+  Serial.println("startup");
+  digitalWrite(STARTUP, HIGH);
+
+  while(true) {
+    FltReg.clearFault();
+    if(!checkFault())
+      break;
+  }
+
+  while(true) {
+    if(digitalRead(nFAULT) == HIGH)
+      break;
+  }
+
+  setMotor();
+  standby();
+}
+
+void Controller::standby() {
+  Serial.println("standby");
+  if(active)
+    active = false;
+
+  digitalWrite(STARTUP, LOW);
+  digitalWrite(EN_GATE, LOW);
+  digitalWrite(OPERATE, LOW);
+  digitalWrite(STANDBY, HIGH);
+}
+
+bool Controller::operate() {
+  Serial.println("operate");
+
+  if(checkFault())
+    return false;
+
+  if(!active)
+    active = true;
+
+  digitalWrite(STANDBY, LOW);
+  digitalWrite(OPERATE, HIGH);
+  digitalWrite(EN_GATE, HIGH);
+  return true;
+}
+
+// FAULT RELATED ************************************
+void Controller::checkFaultPin(){
+  if(digitalRead(nFAULT) == LOW) {
+    if(checkFault()){// if 0x1 D10 is HI -> fault (no running - standby mode)
+      standby();
+      fltReg.checkFaultReg();
+      fltReg.printFaultReg();
+    }
+    else{// if 0x1 D10 is LOW -> warning (still running)
+      warnReg.checkWarningReg(); 
+      warnReg.printWarningReg();
+    }
+  }
+}
+
+void Controller::handleFault(){
+  while(true){
+    FltReg.clearFault();
+    if(!checkFault())
+      break;
+  }
+}
+
+/* return true if there is fault 
+ * return false if there's no fault */
+bool Controller::checkFault(){
+  uint16_t status = readReg(WARN);
+  if(status & 0x400){
+    Serial.println("checkFault - Fault Flag!");
+    standby();
+    return true;
+  }
+  return false;
+}
+
+// OTHERS ******************************************
+/* Setting driving modes & alerts */
+void Controller::setMotor(){
+  uint16_t data = 0;
+
+  /* Set modes to 0x5 - HS Gate Drive Control */
+  data = CNTL_HS_DATA;
+  while(true){
+    if((writeReg(CNTL_HS, data) & 0x3ff) == data)
+      break;
+  }
+
+  /* Set modes to 0x6 - LS Gate Drive Control */
+  data = CNTL_LS_DATA;
+  while(true){
+    if((writeReg(CNTL_LS, data) & 0x3ff) == data)
+      break;
+  }
+
+  /* Set modes to 0x7 - Gate Drive Control */
+  data = CNTL_DRV_DATA; 
+  while(true){
+    if((writeReg(CNTL_DRV, data) & 0x3ff) == data)
+      break;
+  }
+
+  /* Set modes to 0x9 - IC Operation */
+  data = CNTL_IC_DATA;
+  while(true){
+    if(writeReg(CNTL_IC, data) == data)
+      break;
+  }
+
+  /* Set modes to 0xA - Shunt Amplifier */
+  data = CNTL_SHAMP_DATA;
+  while(true){
+    if(writeReg(CNTL_SHAMP, data) == data)
+      break;
+  }
+
+  /* Set modes to 0xB - Voltage Regulator */
+  data = CNTL_VREG_DATA;
+  while(true){
+    if((writeReg(CNTL_VREG, data) & 0x3ff) == data)
+      break;
+  }
+
+  /* Set modes to 0xC - VDS Sense Control */
+  data = CNTL_VDS_DATA;
+  while(true) {
+    if((writeReg(CNTL_VDS, data) & 0xff) == data)
+      break;
+  }
 }
