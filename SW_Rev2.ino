@@ -1,53 +1,63 @@
 #include "global.hpp"
 #include "controller.hpp"
+#include "OLED.hpp"
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
-void pinInit();
-void pwmFrequencyAdjuster();
-void displayInit();
-void displayOLED(int top, bool status);
-
-int thr_in = 0;
-int thr_out = 0;
-int output;
-int pwm;
+/* Variables */
+byte pwm;
 bool status;
+double current;
+/* Objects */
 Controller controller;
 Adafruit_SSD1306 display = Adafruit_SSD1306(128, 64, &Wire, -1);
 
+/* Function Declarations */
+void pinInit();
+void pwmFrequencyAdjuster();
+byte writeSpeed();
+double checkCurrent();
+
 void setup() {
-  Serial.begin(115200);
-  Serial.println("start");
-
   pinInit();
-  displayInit();
+  OLEDInit(display);
 
+  OLED_startup(display);
   controller.startup();
-
-  output = 0;
-  pwm = 0;
-  status = false;
 }
 
 void loop() {
-  output = analogRead(THR_IN) / 4;
-  analogWrite(THR_OUT, output);
-  pwm = (int)((double)output / 255. * 100.);
-  
+  /* output pwm % to drv & return pwm value */
+  pwm = writeSpeed();
+
+  /* read current sense amp */
+  current = checkCurrent();
+
+  /* check for warning or faults & sets global vars */
   controller.checkFaultPin();
 
   status = controller.isActive();
-  displayOLED(pwm, status);
+  /* if motor is in standby mode */
   if(!status) {
-    if(analogRead(SW) < 300){ // need to change this pin to interrupt
+    /* if switch is pressed -> operation */
+    if(analogRead(SW) < 300){
       if(!controller.operate())
         controller.handleFault();
+      while(analogRead(SW) < 300) {} // to give 10ms time to charge gate pumps
     }
-    else
+    else /* if not pressed -> keep refresh faults */
       controller.handleFault();
   }
-  Serial.println();
+  /* if motor is in operation mode */
+  else{
+    /* if switch is pressed & pwm is low -> standby */
+    if(analogRead(SW) < 300 && pwm < 10)
+      controller.standby();
+    while(analogRead(SW) < 300) {} // to prevent changing back to operation mode
+  }
+  
+  /* OLED update */
+  OLED_display(display, pwm, status, current, warning, ovs_flt, ic_flt, vgs_flt);
 }
 
 /********************************************************
@@ -72,6 +82,10 @@ void pinInit(){
 
   SPI_init();
   pwmFrequencyAdjuster();
+
+  pwm = 0;
+  status = false;
+  current = 0;
 }
 
 void pwmFrequencyAdjuster() {
@@ -95,27 +109,17 @@ void pwmFrequencyAdjuster() {
   // More information at http://usethearduino.blogspot.com/2008/11/changing-pwm-frequency-on-arduino.html
 }
 
-void displayInit() {
-  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
-  display.setTextSize(1);
-  display.setTextColor(WHITE);
-  display.setRotation(2);
+byte writeSpeed() {
+  byte output = analogRead(THR_IN)/4;
+  if(output >= MIN_THR)
+    analogWrite(THR_OUT, output);
+  return (byte)((double)output / 255. * 100.);
 }
 
-void displayOLED(int top, bool status) {
-  display.clearDisplay();
-  display.setCursor(0, 0);
-  display.print("Duty %: ");
-  display.setCursor(40, 0);
-  display.print(top);
-
-  display.setCursor(0, 15);
-  display.print("Status: ");
-  display.setCursor(40, 15);
-  if(status)
-    display.print("operation");
-  else
-    display.print("standby");
-  
-  display.display();
+double checkCurrent() {
+  double current = (double)analogRead(CURR_A)/51.15;
+  if(current >= CURR_A_SHUTDOWN){
+    controller.standby();
+  }
+  return current;
 }
